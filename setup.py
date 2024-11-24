@@ -45,8 +45,8 @@ class build_py(_build_py):
 
 
 setup(
-    name='cpr',
-    version='0.1.0',
+    name='AutoCodeRover',
+    version='2.0.0',
     packages=find_packages(),
     ext_modules=cythonize(
         get_ext_paths('app', EXCLUDE_FILES),

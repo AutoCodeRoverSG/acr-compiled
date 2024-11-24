@@ -22,7 +22,9 @@ runs:
     - name: Install ACR dependencies
       id: install-deps
       run: |
+        pip install -r ${{ github.action_path }}/requirements-languages.txt
         pip install -r ${{ github.action_path }}/requirements.txt
+        pip install -r ${{ github.action_path }}/requirements-environment.txt
         echo "pip install ok"
         echo "ACR_PATH=${{ github.action_path }}" >> $GITHUB_OUTPUT
       shell: bash

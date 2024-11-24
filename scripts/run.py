@@ -9,25 +9,25 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from datetime import datetime
+from getpass import getuser
 from glob import glob
+from os import getenv
 from os.path import dirname as pdirname
 from os.path import join as pjoin
 from pathlib import Path
+from socket import gethostname
 from statistics import mean
+from sys import stderr
+
+import requests
 
 ## globals
 # whether to force delete existing data directories
 force_delete: bool = False
 # whether running combined experiment of lite, devin, and swe-25
 running_combined: bool = False
-
-
-# figure out some path to conda executable
-conda_bin_path = os.getenv("CONDA_EXE")
-conda_bin_dir = pdirname(conda_bin_path)
-activate_path = pjoin(conda_bin_dir, "activate")
-deactivate_path = pjoin(conda_bin_dir, "deactivate")
 
 
 @contextlib.contextmanager
@@ -73,7 +73,7 @@ def run_string_cmd_in_conda(
           run commands that contain `&&`, etc.
     NOTE: can find a similar version of this function in app/utils.py
     """
-    conda_bin_path = os.getenv("CONDA_EXE")  # for calling conda
+    conda_bin_path = os.getenv("CONDA_EXE", "conda")  # for calling conda
     conda_root_dir = pdirname(pdirname(conda_bin_path))
     conda_script_path = pjoin(conda_root_dir, "etc", "profile.d", "conda.sh")
     conda_cmd = f"source {conda_script_path} ; conda activate {env_name} ; {command} ; conda deactivate"
@@ -285,10 +285,8 @@ def generate_stats(expr_dir: str, eval_start_epoch: float, eval_end_epoch: float
     stats = {}
     stats["num_tasks"] = len(cost_data)
 
-    stats["model"] = cost_data[0]["model"]
+    stats["models_stats"] = cost_data[0]["models_stats"]
     stats["commit"] = cost_data[0]["commit"]
-    stats["input_cost_per_token"] = cost_data[0]["input_cost_per_token"]
-    stats["output_cost_per_token"] = cost_data[0]["output_cost_per_token"]
 
     total_cost = sum(x["total_cost"] for x in cost_data)
     stats["total_cost"] = total_cost
@@ -349,6 +347,14 @@ def main():
         default=False,
         help="Run combined Lite, Devin, SWE-25 experiment. Will generate seperate report file for each subset.",
     )
+
+    parser.add_argument(
+        "--discord",
+        action="store_true",
+        default=False,
+        help="Use discord to send notifications",
+    )
+
     args = parser.parse_args()
 
     conf_file = args.conf_file
@@ -398,6 +404,17 @@ def main():
     script_dir = pdirname(os.path.realpath(__file__))
     root_dir = pdirname(script_dir)  # root of this repo
 
+    num_tasks = len(Path(task_list_file_path).read_text().splitlines())
+    discord_label = (
+        f"({getuser()}@{gethostname()}) ({num_tasks} tasks): `{' '.join(sys.argv)}`"
+    )
+
+    if args.discord:
+        try:
+            send_discord_message(f"Inference started {discord_label}")
+        except Exception:
+            pass
+
     if args.eval_only:
         swe_input_file = pjoin(expr_dir, "predictions_for_swebench.json")
     else:
@@ -419,9 +436,16 @@ def main():
 
     eval_start_time = datetime.now()
 
+    if args.discord:
+        try:
+            send_discord_message(f"Evaluation started {discord_label}")
+        except Exception:
+            pass
+
     expr_eval_log_dir = run_swe_bench_eval_docker(
         expr_dir, swe_input_file, docker_swe_bench_dir, swe_bench_dir
     )
+
     eval_end_time = datetime.now()
 
     final_report_path = generate_report_docker(
@@ -439,6 +463,42 @@ def main():
     if running_combined:
         create_separate_reports(expr_dir, final_report_path)
         print("Created separate reports for each subset.")
+
+    if args.discord:
+        try:
+            send_discord_message(f"Evaluation finished {discord_label}")
+
+            lines = (
+                Path(expr_dir, "report", "README.md")
+                .read_text()
+                .splitlines(keepends=True)
+            )
+            idx = 0
+            for line in lines:
+                if line.startswith("## Benchmark instances"):
+                    break
+                idx += 1
+            content = "".join(lines[:idx])
+            msg = f"```\n{content}\n```"
+            send_discord_message(msg)
+        except Exception:
+            pass
+
+
+def send_discord_message(content):
+    webhook = getenv("DISCORD_WEBHOOK")
+
+    if not webhook:
+        print("Please set DISCORD_WEBHOOK", file=stderr)
+        exit(1)
+
+    data = {
+        "content": content,
+        "username": "Experiment Bot",  # Optional: Set a custom username
+    }
+    result = requests.post(webhook, json=data)
+    if not (200 <= result.status_code < 300):
+        print(f"Failed to send discord message: {result.status_code}, {result.text}")
 
 
 if __name__ == "__main__":

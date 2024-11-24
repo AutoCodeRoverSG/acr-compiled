@@ -125,7 +125,7 @@ _If you want to set up multiple tasks together, put multiple ids in `tasks.txt` 
 ```
 cd <AutoCodeRover-path>
 conda activate auto-code-rover
-PYTHONPATH=. python app/main.py swe-bench --model gpt-4o-2024-05-13 --setup-map <SWE-bench-path>/setup_result/setup_map.json --tasks-map <SWE-bench-path>/setup_result/tasks_map.json --output-dir output --task django__django-11133
+PYTHONPATH=. python app/main.py swe-bench --model gpt-4o-2024-05-13 --setup-map <SWE-bench-path>/setup_result/setup_map.json --tasks-map <SWE-bench-path>/setup_result/tasks_map.json --output-dir output --task-id django__django-11133
 ```
 
 The output for a run (e.g. for `django__django-11133`) can be found at a location like this: `applicable_patch/django__django-11133_yyyy-MM-dd_HH-mm-ss/` (the date-time field in the directory name will be different depending on when the experiment was run).
